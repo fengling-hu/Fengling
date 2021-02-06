@@ -6,7 +6,7 @@
 
 | Assignment | Upload Date (latest) | Notes |
 |-|-|-|
-| Grading Contract |  |  |
+| Grading Contract |20210205  |  |
 | R Learner's Permit |  |  |
 | Class Reflections |  |  |
 | Polished Lab Notebooks |  |  |
