@@ -1,0 +1,258 @@
+---
+title: "Session 4 polished lab"
+author: "Fengling Hu"
+date: "2021/3/18"
+output:
+  html_document
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+  knitr::opts_chunk$set(echo = FALSE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '80%', fig.align = "center")
+  options(width = 90)
+```
+
+# Introduction
+
+Thousands of low-income communities are designated as Qualified Opportunity Zones in the US. Opportunity Zones are an economic development tool that allows people to invest in distressed areas in the United States. Their purpose is to spur economic growth and job creation in low-income communities while providing tax benefits to investors.  By working with data on those census tracts that were designated as Opportunity Zones as part of the federal Tax Cuts and Jobs Act, we can get a sense of the economic conditions and regional differences in the Opportunity Zones at different geographic scales. From the data resource, we will focus specifically on economic characteristics and demographic characteristics. Through analyzing the data, we can understand the differences between regions and states, which can be a background for further understanding the economic situation in Illinois state.
+
+All data analysis will between designated opportunity zones and not designated opportunity zones. The main goal is to examine various differences between the two types of zones. 
+
+
+
+# The Data
+
+```{r}
+library(tidyverse)
+library(readxl)
+```
+```{r}
+ozs<-read_excel("data/urbaninstitute_tractlevelozanalysis_update1242018.xlsx")
+```
+## Recode designated value： 
+```{r}
+ozs$Designated[is.na(ozs$Designated)]<-0
+```
+The data come from Urban Institute’s dataset, and the data frame has 27 columns and 42176 rows. In order to analyze these 27 variables more clearly, two aspects will be analyzed here: economic data and demographic data. Specifically, the variations in the table will be categorized as follows: 
+
+Economy:
+
+- Median household income ( medhhincome2014_tract )
+- Poverty rate (PovertyRate )
+
+Demographic:
+
+- White ( pctwhitealone )
+- Black ( pctblackalone )
+- Hispanic ( pctHispanic )
+- AAPI ( pctAAPialone ) 
+
+
+
+# Economic data from the Opportunity Zone
+
+Economic-related data directly reflects the usefulness of good living conditions and quality of life for a geographical area's residents. A key measure of income is the median household income, which displays the overall economic situation within a geographical area. Poverty is the state of not having enough material possessions or income for a person's basic needs. The poverty rate is the ratio of the number of people whose income falls below the poverty line, taking half the median household income of the total population. Therefore, median household income and poverty rate can both be used to describe the fundamental regional economic situation. 
+
+### How many opportunity zones are there nationwide? 
+
+```{r}
+nrow(ozs[ozs$Designated == 1,])
+```
+
+### How many non-opportunity zones are there nationwide? 
+
+```{r}
+nrow(ozs[ozs$Designated ==0,])
+```
+
+### What is the average household median income in all Opportunity Zones?
+
+```{r}
+mean(ozs$medhhincome2014_tract[ozs$Designated == 1], na.rm=TRUE)
+```
+
+### What is the average household median income in all non-Opportunity Zones?
+
+```{r}
+mean(ozs$medhhincome2014_tract[ozs$Designated == 0], na.rm=TRUE)
+```
+
+
+
+### How many Opportunity Zones are there in each state?
+
+```{r}
+state_oz <- ozs %>% 
+  group_by(state) %>% 
+  summarise(Tracts_1 = sum(Designated == 1), 
+            Income_1 = mean(medhhincome2014_tract[Designated == 1], na.rm=TRUE),
+            Poverty_1 = mean(PovertyRate[Designated == 1], na.rm=TRUE))
+
+state_oz
+```
+
+### How many non-opportunity zones are there in each state?
+
+```{r}
+state_not_oz <- ozs %>% 
+  group_by(state) %>% 
+  summarise(Tracts_0 = sum(Designated ==0), 
+            Income_0 = mean(medhhincome2014_tract[Designated ==0], na.rm=TRUE),
+            Poverty_0 = mean(PovertyRate[Designated == 0], na.rm=TRUE))
+
+state_not_oz
+```
+
+### What are the economic differences between the opportunity and non-opportunity areas in each state?
+
+```{r}
+state_diff<-merge(state_oz,state_not_oz,by="state")
+```
+```{r}
+state_diff_tot <- state_diff%>%
+  mutate(income_diff=Income_0- Income_1,
+         Poverty_diff=Poverty_1-Poverty_0)
+
+head(state_diff)
+```
+
+### Visualize the degree of economic disparity between opportunity and non-opportunity areas in each state?
+
+```{r}
+par(mfrow=c(1,2))
+
+ggplot(data=state_diff_tot, aes(x=income_diff))+ 
+  geom_histogram()+ 
+  labs(title = "State-wise income difference Histogram", x="Income difference ($)", y= "Counts")+
+  theme_minimal()
+
+ggplot(data=state_diff_tot, aes(x=Poverty_diff))+ 
+  geom_histogram()+ 
+  labs(title = "State-wise poverty difference Histogram", x="Powerty difference ", y= "Counts")+ 
+  theme_minimal()
+```
+
+### Summary 1 : 
+
+Different states have regional differences in their economies. By analyzing income and poverty rates and comparing the difference between opportunity and non-opportunity areas, we can see that the District of Columbia has a large income gap, and New Mexico has the smallest income gap. By ranking the top ten regions, seven states have both in both, are Georgia, Illinois, Pennsylvania, California, North Dakota, Minnesota, and Nevada. Thus, it can be seen that these regions have large economic differences in different regions, and the regional imbalance is more serious. The regional imbalance is more serious.
+
+
+
+### Which states have the highest percentage of Opportunity Zones? 
+
+```{r}
+state_oz_dense <- state_diff_tot %>%
+  mutate(oz_dense=Tracts_1/(Tracts_0+Tracts_1))
+```
+```{r}
+state_oz_dense <- state_diff_tot %>%
+  mutate(oz_dense=Tracts_1/(Tracts_0+Tracts_1)) %>%
+  arrange(desc(oz_dense))
+
+head(state_oz_dense, 5)
+```
+
+### Summary 2 : 
+
+The number of Opportunity Zones is related to each state's size, so using the density of Opportunity Zones as a reference value provides a more accurate reflection of which states are in greater need of inward investment. The values of the variable oz_dense are sorted from largest to smallest.
+
+The results show how the density of opportunity zones' values is arranged from the largest to the smallest at the national level. Geography can, to some extent, influence the economic development of a region, thus causing an uneven distribution of wealth across the country. 
+
+### Illinois is located in the United States' Midwest region, so how does the density of opportunity zones in Illinois compare to other states located in the Midwest?
+
+```{r}
+ggplot(data=state_oz_dense %>% 
+         filter(state %in% c("Illinois", "Indiana", "Iowa", "Kansas", "Michigan", "Minnesota",
+                             "Missouri", "Nebraska", "North Dakota", "0hio", "South Dakota",
+                             "Wisconsin")), aes(x=state, y=oz_dense)) + 
+  geom_bar(stat = "identity") +
+  guides(x =  guide_axis(angle = 30))
+```
+
+```{r}
+ggplot(data=ozs, aes(x=medhhincome2014_tract, fill=Designated))+
+  geom_histogram(binwidth = 2500)+
+  theme_minimal()
+```
+
+### Summary 2 : 
+
+The top three regions in terms of density of opportunity areas are North dakata, Sorth dakata, and illinois, indicating that a large percentage of Illinois is economically disadvantaged.
+
+<br />
+<br />
+<br />
+
+# Demographic data of the Opportunity Zone
+
+The previous section discussed the differences between opportunity and non-opportunity areas in terms of both economic status and regional distribution.Are there also imbalances in the composition of ethnic groups in opportunity areas?
+
+### What is the approximate ethnic composition of the Opportunity Zone nationwide?
+
+```{r}
+nation_pop <- ozs %>% 
+  group_by(Designated) %>% 
+  summarise(
+    White = mean(pctwhitealone, na.rm=TRUE), 
+    Black = mean(pctblackalone, na.rm=TRUE), 
+    Hispanic = mean(pctHispanic, na.rm=TRUE), 
+    AAPI = mean(pctAAPIalone, na.rm=TRUE))
+
+nation_pop
+```
+
+### What is the demographic composition of all opportunity zones in each state?
+
+```{r}
+state_pop <- ozs %>%
+  filter(Designated == 1) %>%
+  group_by(state) %>%
+  summarise(
+    White = mean(pctwhitealone, na.rm=TRUE), 
+    Black = mean(pctblackalone, na.rm=TRUE), 
+    Hispanic = mean(pctHispanic, na.rm=TRUE), 
+    AAPI = mean(pctAAPIalone, na.rm=TRUE))
+
+head(state_pop)
+```
+
+### Summary 1 : 
+
+Each state's demographic composition has a tremendous relationship to its historical development, and it is not possible to clearly represent the relationship between demographic composition and economic conditions. Next, the population composition ratios are analyzed with the density of opportunity zones in each state to explore whether there is a relationship between the two.
+
+
+```{r}
+# correlation between race proportion and opportunity zone density
+a = state_oz_dense %>%
+  arrange(state) %>%
+  filter(!is.na(state))
+
+b = data.frame(white = state_pop$White, black = state_pop$Black, 
+                hispanic = state_pop$Hispanic, AAPI = state_pop$AAPI, oz_dense = a$oz_dense)
+c = b[complete.cases(b), ]
+
+cor(c)["oz_dense",][1:4]
+```
+
+### Summary 2 : 
+
+According to the Pearson correlation coefficient, if we group by state, we find out that black group and AAPI group are not related to the opportunity zone density. While, white group is weakly negatively related to opportunity zone density, and Hispanic group is moderately positive correlated to opportunity zone density.
+
+<br />
+<br />
+<br />
+
+# Concluson
+
+There are many factors associated with the measurement of regional economic conditions, and this paper uses the data to conduct some research on the economic and demographic conditions of different regions in terms of opportunity areas and non-opportunity. Through the above analysis process, it can be understood that there are differences in economic conditions between states in the United States, and regional economic differences within each state vary. Based on the economic-related data and combined with the ethnic composition, it is possible to know the relationship between the different ethnic compositions and the density of opportunity areas in each state.
+
+
+
+
+
+
+
+
