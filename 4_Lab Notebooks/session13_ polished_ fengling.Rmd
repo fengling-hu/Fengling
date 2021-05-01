@@ -1,0 +1,245 @@
+---
+title: "Session 13 polished lab"
+author: "Fengling Hu"
+date: "2021/4/28"
+output:
+  html_document
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+  knitr::opts_chunk$set(echo = FALSE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '80%', fig.align = "center")
+  options(width = 90)
+```
+
+# Introduction
+
+Many large cities have housing problems, and the economic and social factors associated with them reflect the current imbalance in regional development. For example, the housing affordability crisis brought about by rising housing prices, but at the same time they are increasing the wealth of homeowners. The challenge for the government is to encourage households to accumulate housing wealth within the region while promoting equity in the housing market. Using census data, this project explores the interconnections between the racial composition of the population, median household income, homeownership rates and housing affordability. 
+
+## Description and Goals
+
+The main analysis is carried out in the form of mapping, data and tables, and the spatial distribution of the data allows for a qualitative understanding of the spatial relationships between the data. At the same time, more accurate data is explored to further understand the relationships between the four types of data. It is also possible to understand the checks and balances between the housing market and the population and economy.
+
+## Set Up Workspace
+
+```{r}
+dir.create("data")
+dir.create("documentation")
+dir.create("output")
+dir.create("scripts")
+```
+
+## Load Required Packages
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(tidycensus)
+library(sf)
+library(tigris)
+```
+
+# The ACS Data
+
+let's download some ACS data. Here, I will use the script called "1_Get_ACS.R" already downloaded in the folder.
+```{r}
+api_key<-"23475f11ad8378f25548bd91448b468be2e8595b"
+DL_Year<-2019
+survey <- "acs5"
+geo<-"tract"
+state<-c("IL")
+source("1_Get_ACS.R")
+```
+
+In this workbook, I will mainly use data related to race, housing tenure, and housing cost burden. These data are collected from the following tables: B02001, B19013, B25003, B25106.
+So, let's delete some of the tables that will not be used in this workbook.
+
+```{r}
+rm(B01001,B03001,B05002,B11001,B17001,B25077,B25002)
+```
+
+Now, what's left are four tables:
+- [B02001](https://data.census.gov/cedsci/table?q=B02001): Race
+- [B19013](https://data.census.gov/cedsci/table?q=B19013): Median Household Income
+- [B25003](https://data.census.gov/cedsci/table?q=B25003): Housing Tenure (Owners)
+- [B25106](https://data.census.gov/cedsci/table?q=B25106): Housing Cost Burden
+
+Combine the four types of data together and observe the results.
+```{r}
+acs_data <- inner_join(B02001, B19013, by="GEOID")
+acs_data <- inner_join(acs_data, B25003, by="GEOID")
+acs_data <- inner_join(acs_data, B25106, by="GEOID")
+```
+Since the current data is based on units of census tracts, it is difficult to visualize the correlation. Next, I am going to plot into a map for further observation.
+
+
+
+# The Geographic Data
+
+Since we have already load both the tigris and sf package earlier, now we can download tracts for Illinois into an object called "il_tct".
+```{r, warning=FALSE, message=FALSE, results='hide'}
+il_tract <- tracts(state = "IL", class="sf")
+?tracts
+```
+Combine the geographic data with exixting acs data:
+```{r}
+il_tract <- inner_join(il_tract, acs_data, by="GEOID")
+```
+
+let's go ahead and select a subset of these data - the census tracts for the counties that make up the Illinois portion of the Chicago metropolitan area. According to the component of GEOID: 
+- State (2 characters)
+- County (3 characters)
+- Tract (6 characters)
+- Block Group (1 characters)
+
+In order to get data of the Chicago metropolitan area, we need to aggregate tract data into county data, then use group_by to combine data from 9 counties within Chicago area. 
+```{r}
+chi <- il_tract %>% 
+  mutate(GEOID_CO = substr ( GEOID, 0, 5))%>%
+  filter(GEOID_CO %in% c("17031", "17037", "17043", "17063","17089","17093","17097","17111","17197"))
+```
+
+filter out two tracts for which ALAND(land area) is 0.
+```{r}
+chi <- chi %>% filter(!GEOID %in% c("17097990000","17031990000"))
+```
+
+Summarise county-level data related to race, MHHI(median household income), P_Own(housing tenure), CostBurden(house cost)
+```{r}
+co <- chi %>% group_by(GEOID_CO) %>% summarise(
+  White_co= mean(PWhite, na.rm = TRUE),
+  Black_co=mean(PBlack, na.rm = TRUE),
+  AIAN_co = mean(PAIAN, na.rm = TRUE),
+  Asian_co = mean(PAsian, na.rm = TRUE),
+  NonWhite_co = mean(PNonwhite, na.rm = TRUE),
+  MHHI_co = mean(MHHI, na.rm = TRUE),
+  P_Own_co = mean(P_Own, na.rm = TRUE),
+  CostBurden_co = mean(CostBurden, na.rm = TRUE)
+)
+co
+```
+
+#### Summarise: 
+from the table, we can know the fllowing result: 
+- 17031(Cook County): highest number of black, lowest white, highest Cost Burden, 
+- 17097(Lake County): highest number of Asian people, highest Median Household income
+- 17093(Kendall County): Highest House ownership rate
+
+It seems interesting that the highest median household income area has the highest percent of Asian people. it may tell us there is a potential that the Asian living in Chicago area has relatively higher salary job or high education.  What about in the entire Illinois area? We can go back to the census tracts data: acs_data. 
+
+```{r}
+acs_data_Asian <- acs_data %>% 
+  mutate(GEOID_CO = substr ( GEOID, 0, 5)) %>%
+  group_by(GEOID) %>%
+  summarise(Asian_il= mean(PAsian, na.rm = TRUE),
+          MHHI_il=mean(MHHI, na.rm = TRUE))
+acs_data_Asian
+```
+
+Rearranging the rows in descending order of the Asian_il column: 
+
+```{r}
+acs_data_Asian[order(acs_data_Asian$Asian_il, decreasing = TRUE),]
+```
+
+as shown in the table, there is no obvious relationship between high Asian area and high median household income area. 
+
+# Mapping data
+
+#### Mapping Race. 
+Now take a look at what we can find on the maps.
+
+The distribution of White: 
+```{r}
+ggplot()+
+  geom_sf(data=chi, aes(fill=PWhite, colour = PWhite))+
+  geom_sf(data = co, fill=NA)
+```
+
+#### Mapping Median household income
+The distribution of median household income: 
+```{r}
+ggplot()+
+  geom_sf(data=chi, aes(fill=MHHI, colour = MHHI))+
+  geom_sf(data = co, fill=NA)
+```
+
+#### Summary:
+By comparing the two maps, we can roughly conclude that the regions with more whites have higher median household income. We can only vaguely understand the relationship between these two factors, and subsequently, we need to explore the two other factors - Housing tenure, and housing cost burden, and let us use the same method to understand the spatial distribution characteristics.
+
+#### Mapping Housing tenure
+The distribution of house ownership: 
+```{r}
+ggplot()+
+  geom_sf(data=chi, aes(fill=P_Own, colour = P_Own))+
+  geom_sf(data = co, fill=NA)
+```
+#### Mapping Housing cost burden
+The distribution of cost burden: 
+```{r}
+ggplot()+
+  geom_sf(data=chi, aes(fill=CostBurden, colour = CostBurden))+
+  geom_sf(data = co, fill=NA)
+```
+
+#### Make a histogram of Housing cost burden by different counties
+```{r}
+ggplot()+
+  geom_histogram(data=chi, aes(x=CostBurden))+
+  facet_wrap(~ GEOID_CO)
+```
+
+From the diagrams above, it can be seen cook county has the highest housing cost burden. 
+
+#### Make a histogram of Housing tenure by different counties
+```{r}
+ggplot()+
+  geom_histogram(data=chi, aes(x=P_Own))+
+  facet_wrap(~ GEOID_CO)
+```
+
+
+### The relationship between housing tenure and housing cost burden
+
+```{r}
+ggplot()+
+  geom_point(data=chi, aes(x=CostBurden, y=P_Own))+
+  geom_smooth(data = chi, method = lm, aes(x=CostBurden, y=P_Own))
+```
+
+From the diagrams above, we can tell the cost burden is negatively correlated with house ownership. The  data concentrated slight above 0.9, which can means most people own one house. the data of cost burden is more evenly distributed among 0 and 0.6. 
+
+```{r}
+ggplot()+
+  geom_point(data=chi, aes(x=CostBurden, y=PWhite))+
+  geom_smooth(data = chi, method = lm, aes(x=CostBurden, y=PWhite))
+```
+
+From the diagrams above, we can tell the cost burden is also negatively correlated with the number of white. The two diagrams are quite similar to each other. The data concentrated in two areas, one is slight below 1, one is at 0. This two conentration roughly shows the uneven distribution of white people according to their economic situation. The data of cost burden is evenly distributed among 0 and 0.6. 
+
+
+### Black-White Dissimilarity
+```{r}
+chi <- left_join(chi, co %>% st_set_geometry(NULL), by="GEOID_CO")
+```
+```{r}
+chi_dissim = chi %>% mutate(dissim_wb = abs(PBlack / Black_co - PWhite / White_co)) %>% 
+  group_by(GEOID_CO) %>% 
+  summarise(dissimilarity = .5* sum(dissim_wb, na.rm = TRUE))
+```
+
+```{r}
+co_dissim <- inner_join(chi_dissim, co %>% st_set_geometry(NULL),by = "GEOID_CO")
+co_dissim
+```
+
+
+
+
+# Concluson
+
+There are so many different factors that may influence the housing market. In the workbook, I took a step on the demographic data and related it to the house cost burden and house ownership data. It may not accurately represent the relationship among each other. However, it can allow us to find what’s interesting about those data and dive more into them in the future, such as the race distribution and housing cost burden.  
+
