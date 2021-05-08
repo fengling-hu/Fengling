@@ -1,0 +1,285 @@
+---
+title: "Final Project"
+author: "Fengling Hu"
+date: "2021/05/07"
+output:
+  html_document
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+  knitr::opts_chunk$set(echo = FALSE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '80%', fig.align = "center")
+  options(width = 90)
+```
+
+# Introduction
+
+This proposal is related to my landscape design project for an abandoned industrial site —— Damen silos —— has been abandoned since the 1970s. The large scale and robust construction of the remaining silos make them expensive to renovate or demolish. As the south branch of the river has become an increasingly re-mediated landscape, the Damen Silos site has the opportunity to be transformed into a dynamic new public park and become an integral part of Chicago's existing public landscapes. 
+
+To provide a social-economic background for the site, this research will look into the historical development of the Industrial Waterways System in Chicago, to evaluate the existing industrial activities happening along the river. To seek a deeper understanding of surrounding communities, I will look at data on demographic, economic, and public infrastructures. The ultimate goal of this research is to provide support for my landscape design project related to location and programming, which aims to connect segregated communities around Damen Silos. 
+
+In the end, we can also get a broader knowledge on how to reuse abandoned brownfields within a community can also be concluded to enhance the social value of public spaces and promote regional diversity and inclusiveness
+
+
+
+## Description and Goals
+
+The primary analysis process is in the form of mapping. The spatial distribution of the data allows for a qualitative understanding of the social-economic background of Damen Silos. At the same time, the analysis will also be developed at different levels of geographic scale. The very basic idea is to use census tracts to process information within a 1mile circle around the Damen Silos, then combine with more extensive area data in three surrounding communities and the entire Chicago area so that the research can be more comprehensive.
+
+
+
+### Set Up Workspace
+
+```{r}
+dir.create("data")
+dir.create("documentation")
+dir.create("output")
+dir.create("scripts")
+```
+
+### Load Required Packages
+
+```{r message=TRUE, warning=TRUE}
+library(tidyverse)
+library(readxl)
+library(tidycensus)
+library(sf)
+library(tigris)
+```
+
+
+
+## The Demographic Data
+
+### Community Background
+
+Damen Silos is located on the south edge of the Pilsen community and surrounded by the Bridgeport community and McKinley Park community, three very different neighborhoods with their uniqueness. Since 1970s, Pilsen has been identified as a Latino community and residents have consistently been engaged in strengthening and building upon that identity. Pilsen has many assets, including its history and strong community identity, proximity to Chicago’s downtown business district, accessibility to public transportation, affordable housing. Bridgeport was historically a white immigrant community and was once known for its racial intolerance. Today it ranks as one of the city's most diverse neighborhoods. In a sense, Bridgeport "bridges" the gap between many diverse ethnic groups. The cultures include Irish, Italian-Americans, Lithuanian-Americans, Chinese-Americans, and Mexican-Americans. McKinley Park has served as an important job center with significant portions of its land designated for industrial activity. Today, McKinley Park’s location continues to play an important role in attracting businesses, residents, and visitors. As the most important part of the study, I will use data from Census Explorer and Chicago Data Portal to summarize and compare demographics, workforce characteristics, and community institutions within the three communities. These are important aspects to understand the diversity of these communities and people’s quality of life within these areas. 
+
+```{r}
+api_key<-"23475f11ad8378f25548bd91448b468be2e8595b"
+DL_Year<-2019
+survey <- "acs5"
+geo<-"tract"
+county<-c("Cook")
+state <- "IL"
+source("1_Get_ACS.R")
+```
+
+### Table with demographic information: B01001(Age) ,B02001(Race), B03001(Latino), B25002(Foreigner)
+
+### Combine demographic data into one table: 
+```{r}
+demographic_cook <- inner_join(B01001, B02001, by="GEOID")
+demographic_cook <- inner_join(demographic_cook, B03001, by="GEOID")
+demographic_cook <- inner_join(demographic_cook, B25002, by="GEOID")
+```
+
+### The Geographic Data
+```{r, warning=FALSE, message=FALSE, results='hide'}
+cook_tract <- tracts(county = "cook", state = "IL", class="sf")
+```
+
+### Combine acs data with geographic data:
+```{r}
+demo_cook_geo <- inner_join(cook_tract, demographic_cook, by="GEOID")
+```
+
+### Filter out two tracts for which ALAND(land area) is 0.
+```{r}
+demo_cook_geo <- demo_cook_geo %>% filter(!GEOID %in% c("17097990000","17031990000"))
+```
+
+Now the GEOID has 11 numbers, which is consists of:
+- State (2 characters)
+- County (3 characters)
+- Tract (6 characters)
+
+Select the tracts that near Damen Silos: 
+- Pilsen community: 8435, 8413, 8432,  3011, 3012, 8407, 8412, 3017, 3019 
+- McKinley Park community: 5801, 5905, 5906, 5907, 8403, 8404
+- Bridgeport community: 6006, 6007 
+
+Add another observation with 9 number consists of the GEOID:
+```{r}
+demo_cook_geo <- demo_cook_geo %>% 
+  mutate(GEOID_tct = substr ( GEOID, 0, 9))
+```
+
+
+
+### Select the census tracts within 1miles by different communities: 
+
+```{r}
+Bridgeport_tct <- demo_cook_geo %>%
+  filter(GEOID_tct %in% c("170316006","170316007" ))
+```
+
+Select McKinley Park community: 5801, 5905, 5906, 5907, 8403, 8404
+```{r}
+McKinley_tct <- demo_cook_geo %>%
+  filter(GEOID_tct %in% c("170315801","170315905","170315906","170315907","170318403","170318404" ))
+```
+
+Select Pilsen community: 8435, 8412, 8413, 8432, 3011, 3012, 8407, 3017, 3019 
+```{r}
+Pilsen_tct <- demo_cook_geo %>%
+  filter(GEOID_tct %in% c("170318435","170318412","170318413","170318432","170313011","170313012","170318407" ,"170313017","170313019"))
+```
+
+Also combine all tracts together, in order to analysis the entire i mile area: 
+
+```{r}
+comb_tct = rbind(Bridgeport_tct, McKinley_tct, Pilsen_tct)
+```
+
+### Population density:
+
+```{r}
+comb_tct <- comb_tct %>% mutate(pop_density=Pop/ALAND)
+```
+
+Making map of difference of population density among these tracts (1mile).
+```{r}
+ggplot()+
+  geom_sf(data = comb_tct,aes(fill=pop_density, colour = pop_density))
+ggsave("pop_density.png") 
+```
+
+
+
+### Population diverity:
+
+White group: 
+
+```{r}
+ggplot()+
+  geom_sf(data = comb_tct,aes(fill=PWhite, colour = PWhite))
+ggsave("white.png") 
+```
+
+Black group: 
+
+```{r}
+ggplot()+
+  geom_sf(data = comb_tct,aes(fill=PBlack, colour = PBlack))
+ggsave("Black.png") 
+```
+
+Asian group: 
+
+```{r}
+ggplot()+
+  geom_sf(data = comb_tct,aes(fill=PAsian, colour = PAsian))
+ggsave("Asian.png") 
+```
+
+Latino group: 
+
+```{r}
+ggplot()+
+  geom_sf(data = comb_tct,aes(fill=PLatino, colour = PLatino))
+ggsave("Latino.png") 
+```
+
+##### Summary: 
+- Knowing the population of different races and their distribution 
+- Customize landscape design and diverse landscape activities. 
+- Helps to create an inclusive public environment and build a sense of belonging.
+
+
+
+### Vulnerable Group: 
+
+Age under 18: 
+```{r}
+ggplot()+
+  geom_sf(data = comb_tct,aes(fill = over65, colour = over65))
+ggsave("over65.png") 
+```
+
+Age above 65: 
+```{r}
+ggplot()+
+  geom_sf(data = comb_tct,aes(fill = over65, colour = over65))
+ggsave("over65.png") 
+```
+
+##### Summary: 
+- Higher percentage of senior indicated the need of facilities for the elderly
+- Programs for senior activities
+- Therapeutic landscape to promote physical, mental, and spiritual healing
+
+
+
+## Economic Background: 
+
+### Combine economic data into one table: 
+```{r}
+eco_cook <- inner_join(B17001, B19013, by="GEOID")
+```
+
+### combine economic data with geographic data, and filter out two tracts for which ALAND(land area) is 0.
+```{r}
+eco_cook_geo <- inner_join(cook_tract, eco_cook, by="GEOID") %>%
+  filter(!GEOID %in% c("17097990000","17031990000")) %>% 
+  mutate(GEOID_tct = substr ( GEOID, 0, 9))
+```
+
+### select surrounding tracts area: 
+```{r}
+Bridgeport_eco <- eco_cook_geo %>%
+  filter(GEOID_tct %in% c("170316006","170316007" ))
+McKinley_eco <- eco_cook_geo %>%
+  filter(GEOID_tct %in% c("170315801","170315905","170315906","170315907","170318403","170318404" ))
+Pilsen_eco <- eco_cook_geo %>%
+  filter(GEOID_tct %in% c("170318435","170318412","170318413","170318432","170313011","170313012","170318407" ,"170313017","170313019"))
+comb_eco = rbind(Bridgeport_eco, McKinley_eco, Pilsen_eco)
+```
+
+### Median household income: 
+plot the mapping related to the MHHI(Median household income):
+```{r}
+ggplot()+
+  geom_sf(data = comb_eco,aes(fill = MHHI, colour = MHHI))
+ggsave("MHHI.png") 
+```
+
+### Poverty Rate: 
+```{r}
+ggplot()+
+  geom_sf(data = comb_eco,aes(fill = Pov, colour = Pov))
+ggsave("Pov.png")
+```
+
+To better understand the economic situation under a larger geographic area, Check the economic situation within larger area:
+```{r}
+ggplot()+
+  geom_sf(data= eco_cook_geo, aes(fill=Pov, colour = Pov))+
+  geom_sf(data = comb_eco, fill=NA , colour = "red")
+ggsave("Chicago_Pov.png")
+```
+
+```{r}
+ggplot()+
+  geom_sf(data= eco_cook_geo, aes(fill=MHHI, colour = MHHI))+
+  geom_sf(data = comb_eco, fill=NA , colour = "red")
+ggsave("Chicago_MHHI.png")
+```
+
+##### Summary: 
+- Poorer residents need more social services
+- Integrated with the institutions in the community to provide recreational, educational and other public activities for the relevant groups.
+
+
+
+## Conclusion to guide the next design phase
+
+- A public space refers to an area or place that is open and accessible to all peoples, regardless of gender, race, ethnicity, age or socio-economic level. 
+- This research process provides a series of evidence for us to understand the site and its surrounding communities: it is a very diverse group of population
+- More focus should be put on the people working in services, Transportation, Production, and Material moving. Specific Services can relate to their career training, body and mental health caring.
+- Next step: synthesis the layers of all the information. More information we can collect, the more we understand the user of the site, then create a more customized and welcoming public park. 
+
+
